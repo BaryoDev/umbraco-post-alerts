@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BaryoDev.Umbraco.PostAlerts/BaryoDev.Umbraco.PostAlerts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BaryoDev.Umbraco.PostAlerts.Tests/BaryoDev.Umbraco.PostAlerts.Tests.csproj" />
+    <Project Path="tests/BaryoDev.Umbraco.PostAlerts.IntegrationTests/BaryoDev.Umbraco.PostAlerts.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

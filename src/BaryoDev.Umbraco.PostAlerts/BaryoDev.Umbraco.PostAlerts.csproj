@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <PackageId>BaryoDev.Umbraco.PostAlerts</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>BaryoDev</Authors>
+    <Description>New-post alerts for Umbraco 17. Readers get a weekly email digest after double opt-in, or a browser push when a post is first published. Works without JavaScript for email.</Description>
+    <PackageTags>umbraco umbraco-marketplace newsletter digest web-push notifications blog</PackageTags>
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/BaryoDev/umbraco-post-alerts</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/BaryoDev/umbraco-post-alerts</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Umbraco.Cms.Web.Common" Version="[17.8.1,18.0.0)" />
+    <PackageReference Include="Umbraco.Cms.Api.Management" Version="[17.8.1,18.0.0)" />
+    <PackageReference Include="Lib.Net.Http.WebPush" Version="3.3.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="BaryoDev.Umbraco.PostAlerts.Tests" />
+    <InternalsVisibleTo Include="BaryoDev.Umbraco.PostAlerts.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>
