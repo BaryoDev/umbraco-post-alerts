@@ -89,8 +89,8 @@ public sealed class SubscriberRepository(IScopeProvider scopeProvider) : ISubscr
     {
         using var scope = scopeProvider.CreateScope();
         int n = scope.Database.Execute(
-            "DELETE FROM baryoPostAlertsSubscriber WHERE Status = @0 AND CreatedUtc < @1",
-            (int)SubscriberStatus.Pending, cutoffUtc);
+            "DELETE FROM baryoPostAlertsSubscriber WHERE Status = 0 AND CreatedUtc < @0",
+            cutoffUtc);
         scope.Complete();
         return n;
     }

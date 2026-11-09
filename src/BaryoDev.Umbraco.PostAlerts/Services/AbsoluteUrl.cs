@@ -17,7 +17,8 @@ public static class AbsoluteUrl
         {
             url = "https:" + url;
         }
-        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? abs))
+        // On Linux and macOS "/path" parses as an absolute file: URI, so a leading slash is checked first.
+        if (!url.StartsWith('/') && Uri.TryCreate(url, UriKind.Absolute, out Uri? abs))
         {
             return abs.Scheme is "http" or "https" ? abs.AbsoluteUri : null;
         }
