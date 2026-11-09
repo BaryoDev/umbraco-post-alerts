@@ -1,0 +1,22 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "PackageType": "Package",
+  "Category": "Content",
+  "Description": "New-post alerts for Umbraco 17. Readers sign up for a weekly email digest with double opt-in, or turn on browser push notifications. The digest goes out through Umbraco's own email sending, only in weeks with a new post, and shows each post's cover, title and summary. Push uses Web Push with your own VAPID keys and fires on the first publish only. One view component renders the sign-up block, and the email form works without JavaScript. Free and MPL-2.0 licensed.",
+  "AuthorDetails": {
+    "Name": "BaryoDev",
+    "Description": "Small open source .NET and JavaScript packages.",
+    "Url": "https://github.com/BaryoDev",
+    "ImageUrl": "https://raw.githubusercontent.com/BaryoDev/umbraco-post-alerts/main/icon.png"
+  },
+  "DocumentationUrl": "https://github.com/BaryoDev/umbraco-post-alerts#readme",
+  "IssueTrackerUrl": "https://github.com/BaryoDev/umbraco-post-alerts/issues",
+  "LicenseTypes": [ "Free" ],
+  "Tags": [
+    "newsletter",
+    "email",
+    "push",
+    "notifications",
+    "blog"
+  ]
+}
