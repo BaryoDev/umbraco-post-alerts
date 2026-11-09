@@ -26,6 +26,9 @@
     <InternalsVisibleTo Include="BaryoDev.Umbraco.PostAlerts.IntegrationTests" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="wwwroot/App_Plugins/BaryoDev.PostAlerts/push-sw.js" LogicalName="push-sw.js" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../icon.png" Pack="true" PackagePath="/" />
   </ItemGroup>
