@@ -10,7 +10,7 @@ New-post alerts for Umbraco 17. Two channels: a weekly email digest and browser 
 - Send only in weeks with at least one newly published post.
 - Double opt-in, store a hash of the token only, honeypot, per-IP rate limit, never reveal if an address is subscribed.
 - Web Push with VAPID keys from configuration. Push fires on the first publish only.
-- Free and MPL-2.0. Pro features, if any, come later as separate packages by domain key.
+- Free and MIT, like the sibling packages. Pro features, if any, come later as separate packages by domain key.
 
 ## Data
 

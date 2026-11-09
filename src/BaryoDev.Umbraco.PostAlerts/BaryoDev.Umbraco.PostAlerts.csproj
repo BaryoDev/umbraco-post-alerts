@@ -5,7 +5,7 @@
     <Authors>BaryoDev</Authors>
     <Description>New-post alerts for Umbraco 17. Readers get a weekly email digest after double opt-in, or a browser push when a post is first published. Works without JavaScript for email.</Description>
     <PackageTags>umbraco umbraco-marketplace newsletter digest web-push notifications blog</PackageTags>
-    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/BaryoDev/umbraco-post-alerts</PackageProjectUrl>
     <RepositoryUrl>https://github.com/BaryoDev/umbraco-post-alerts</RepositoryUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

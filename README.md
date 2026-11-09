@@ -155,4 +155,4 @@ The `icon.png` is a placeholder copied from another BaryoDev package. Replace it
 
 ## License
 
-MPL-2.0
+MIT
