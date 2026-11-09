@@ -1,0 +1,19 @@
+@model BaryoDev.Umbraco.PostAlerts.MessagePage
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>@Model.Title</title>
+    <link rel="stylesheet" href="@Url.Content("~/App_Plugins/BaryoDev.PostAlerts/post-alerts.css")" />
+</head>
+<body class="bdpa-page">
+<main class="bdpa-page__box">
+    <h1 class="bdpa-page__title">@Model.Title</h1>
+    <p class="bdpa-page__text@(Model.Ok ? "" : " bdpa-page__text--error")" role="status">@Model.Message</p>
+    <p><a class="bdpa-page__link" href="@Model.HomeUrl">Back to the site</a></p>
+</main>
+</body>
+</html>
