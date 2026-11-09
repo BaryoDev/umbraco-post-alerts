@@ -1,0 +1,16 @@
+{
+  "size": 128,
+  "out": ".",
+  "icons": [
+    {
+      "name": "icon",
+      "bg": "#2E86DE",
+      "layers": [
+        { "d": "M64 26 C47 26 38 39 38 56 L38 72 L29 84 L99 84 L90 72 L90 56 C90 39 81 26 64 26 Z", "fill": "white" },
+        { "circle": [64, 93, 9], "fill": "white" },
+        { "circle": [92, 34, 18], "fill": "#2E86DE" },
+        { "circle": [92, 34, 12], "fill": "#FFCD3C" }
+      ]
+    }
+  ]
+}
