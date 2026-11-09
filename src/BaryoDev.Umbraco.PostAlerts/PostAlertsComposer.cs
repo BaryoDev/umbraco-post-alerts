@@ -28,6 +28,7 @@ public sealed class PostAlertsComposer : IComposer
         builder.Services.TryAddSingleton<IAlertMailer, UmbracoAlertMailer>();
         builder.Services.AddSingleton<SubscriptionService>();
 
+        builder.Services.TryAddSingleton<IProtectionCheck, PublicAccessProtectionCheck>();
         builder.Services.AddSingleton<IPostSource, UmbracoPostSource>();
         builder.Services.AddSingleton<DigestService>();
         builder.Services.AddRecurringBackgroundJob<DigestJob>();

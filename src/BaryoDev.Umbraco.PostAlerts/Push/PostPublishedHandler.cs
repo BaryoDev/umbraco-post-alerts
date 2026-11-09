@@ -1,4 +1,5 @@
 using BaryoDev.Umbraco.PostAlerts.Data;
+using BaryoDev.Umbraco.PostAlerts.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.Events;
@@ -14,6 +15,7 @@ namespace BaryoDev.Umbraco.PostAlerts.Push;
 public sealed class PostPublishedHandler(
     IPushQueue queue,
     IPushedPostRepository pushed,
+    IProtectionCheck protection,
     IOptionsMonitor<PostAlertsOptions> options,
     TimeProvider time,
     ILogger<PostPublishedHandler> logger) : INotificationHandler<ContentPublishedNotification>
@@ -27,17 +29,23 @@ public sealed class PostPublishedHandler(
         }
         foreach (IContent content in notification.PublishedEntities)
         {
-            if (!o.DocumentTypes.Contains(content.ContentType.Alias, StringComparer.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            if (!pushed.TryMark(content.Key, time.GetUtcNow().UtcDateTime))
-            {
-                continue;
-            }
             string? summary = string.IsNullOrWhiteSpace(o.SummaryAlias) ? null : content.GetValue(o.SummaryAlias)?.ToString();
-            queue.Enqueue(new PushJob(content.Key, content.Name ?? "", summary));
-            logger.LogInformation("Queued a push for the first publish of {Key}.", content.Key);
+            Consider(o, content.Key, content.ContentType.Alias, content.Path, content.Name ?? "", summary);
         }
+    }
+
+    internal bool Consider(PostAlertsOptions o, Guid key, string alias, string path, string name, string? summary)
+    {
+        if (!o.DocumentTypes.Contains(alias, StringComparer.OrdinalIgnoreCase) || protection.IsExcluded(path))
+        {
+            return false;
+        }
+        if (!pushed.TryMark(key, time.GetUtcNow().UtcDateTime))
+        {
+            return false;
+        }
+        queue.Enqueue(new PushJob(key, name, summary));
+        logger.LogInformation("Queued a push for the first publish of {Key}.", key);
+        return true;
     }
 }

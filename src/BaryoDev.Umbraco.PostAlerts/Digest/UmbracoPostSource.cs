@@ -26,6 +26,7 @@ internal sealed class UmbracoPostSource(
     IPublishedUrlProvider urls,
     IImageUrlGenerator imageUrls,
     IContentService contentService,
+    IProtectionCheck protection,
     IDefaultCultureAccessor defaultCulture,
     IOptionsMonitor<PostAlertsOptions> options,
     ILogger<UmbracoPostSource> logger) : IPostSource
@@ -56,7 +57,7 @@ internal sealed class UmbracoPostSource(
         using var _ = contextFactory.EnsureUmbracoContext();
         string? culture = Culture();
         IPublishedContent? c = contentCache.GetById(key);
-        return c is not null && IsPost(c, o) && c.IsPublished(culture) ? Map(c, o, culture) : null;
+        return c is not null && IsPost(c, o) && !protection.IsExcluded(c.Path) && c.IsPublished(culture) ? Map(c, o, culture) : null;
     }
 
     public IReadOnlyList<Guid> GetAllKeys()
@@ -85,7 +86,7 @@ internal sealed class UmbracoPostSource(
                 keys.AddRange(found);
             }
         }
-        return statusFilter.FilterAvailable(keys, culture).Where(c => IsPost(c, o) && c.IsPublished(culture)).ToList();
+        return statusFilter.FilterAvailable(keys, culture).Where(c => IsPost(c, o) && !protection.IsExcluded(c.Path) && c.IsPublished(culture)).ToList();
     }
 
     private PostCandidate Map(IPublishedContent c, PostAlertsOptions o, string? culture)

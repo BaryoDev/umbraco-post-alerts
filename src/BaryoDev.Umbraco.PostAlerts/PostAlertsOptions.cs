@@ -13,6 +13,8 @@ public sealed class PostAlertsOptions
     /// <summary>Tried in order. The first alias that holds an image is the cover.</summary>
     public string[] CoverAlias { get; set; } = ["headerImage", "cover"];
     /// <summary>Property with the post date. When it is empty or missing, the publish date is used.</summary>
+    /// <summary>Off by default: posts under Umbraco Public Access are left out of email and push, so their titles never reach subscribers.</summary>
+    public bool IncludeProtected { get; set; }
     public string DateAlias { get; set; } = "publishDate";
 
     // Email digest
