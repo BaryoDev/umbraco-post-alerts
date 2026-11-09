@@ -17,7 +17,7 @@ Start the site. The package creates its tables (`baryoPostAlertsSubscriber`, `ba
 
 ## Email: SMTP
 
-The package sends through Umbraco's own email sender, so credentials stay in server config. Example for Resend over SMTP, with placeholders. Put the password in an environment variable or user secrets, not in a file you commit.
+The package reads Umbraco's own SMTP settings (`Umbraco:CMS:Global:Smtp`), so you configure SMTP once and credentials stay in server config. It sends with MailKit, which Umbraco already uses. Example for Resend over SMTP, with placeholders. Put the password in an environment variable or user secrets, not in a file you commit.
 
 ```json
 {
@@ -52,6 +52,9 @@ Section `BaryoDev:PostAlerts`.
 | `DateAlias` | `publishDate` | Falls back to the publish date. |
 | `IncludeProtected` | `false` | Posts under Public Access are left out unless this is true. |
 | `EnableDigest` | `true` | Turns email sign-up and the digest on or off. |
+| `UseUmbracoEmailSender` | `false` | Send through Umbraco's `IEmailSender` instead of MailKit. See Limits. |
+| `UnsubscribeMailto` | none | Adds `<mailto:...>` to `List-Unsubscribe`. Only set it if that mailbox handles unsubscribes. |
+| `SendDelayMilliseconds` | `0` | Pause between digest messages. |
 | `SendDay` | `Monday` | |
 | `SendHourLocal` | `9` | In `TimeZone`. |
 | `TimeZone` | `Asia/Manila` | IANA id. |
@@ -130,9 +133,11 @@ If the site has no worker, do nothing. The button registers the one the package 
 - Push: fires on the first publish of a post of a configured type. Subscriptions that answer 404 or 410 are deleted.
 - Push endpoints: `GET /baryo-post-alerts/push/key`, `POST` and `DELETE /baryo-post-alerts/push/subscription`.
 
-## Limits
+## Email format and headers
 
-Umbraco's email sender takes one body and no custom headers. So the digest is HTML only, and the unsubscribe link is in the footer. The `List-Unsubscribe` and `List-Unsubscribe-Post` headers are built and tested, but the default mailer cannot attach them. To send them, register your own `IAlertMailer` (it receives the headers and a plain-text version). The one-click POST endpoint already works.
+Digest mail is `multipart/alternative` (plain text, then HTML) and carries `List-Unsubscribe: <https://...>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), which Gmail and Yahoo expect from bulk senders. The confirmation email is plain text and has no unsubscribe headers. One SMTP connection is used per digest batch, and a failure on one address does not stop the run.
+
+The mailer falls back to Umbraco's `IEmailSender` when `UseUmbracoEmailSender` is true, when no SMTP host is set, or when Umbraco is set to a pickup directory. That path sends HTML only with no custom headers, because `IEmailSender` takes one body and no headers. The footer link still works. To use another transport, register your own `IAlertMailer`.
 
 Sites with several languages use the default language.
 

@@ -76,21 +76,9 @@ public sealed class DigestService(
         int sent = 0;
         try
         {
-            foreach (SubscriberRow subscriber in recipients)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    await mailer.SendAsync(Build(o, zone, posts, tokens.UnsubscribeToken(subscriber.Id), subscriber.Email, isTest: false),
-                        "PostAlertsDigest", cancellationToken);
-                    sent++;
-                }
-                catch (Exception e) when (e is not OperationCanceledException)
-                {
-                    // One bad address or a mail hiccup must not stop the rest. The count shows the gap.
-                    logger.LogWarning(e, "Could not send the digest to one subscriber.");
-                }
-            }
+            IEnumerable<OutgoingMail> mails = recipients.Select(r =>
+                Build(o, zone, posts, tokens.UnsubscribeToken(r.Id), r.Email, isTest: false));
+            sent = await mailer.SendBatchAsync(mails, "PostAlertsDigest", cancellationToken);
         }
         finally
         {

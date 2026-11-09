@@ -24,6 +24,30 @@ public sealed record OutgoingMail(
 public interface IAlertMailer
 {
     Task SendAsync(OutgoingMail mail, string emailType, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends many messages. A failure on one message is logged and does not stop the rest. Returns how many were
+    /// accepted. The default sends them one by one. An SMTP mailer overrides it to reuse one connection.
+    /// </summary>
+    async Task<int> SendBatchAsync(IEnumerable<OutgoingMail> mails, string emailType, CancellationToken cancellationToken = default)
+    {
+        int sent = 0;
+        foreach (OutgoingMail mail in mails)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await SendAsync(mail, emailType, cancellationToken);
+                sent++;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // The caller sees the gap in the count.
+                System.Diagnostics.Trace.TraceWarning("PostAlerts: a message failed: " + e.GetType().Name);
+            }
+        }
+        return sent;
+    }
 }
 
 public sealed class UmbracoAlertMailer(

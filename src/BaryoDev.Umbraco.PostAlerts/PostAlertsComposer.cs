@@ -25,7 +25,8 @@ public sealed class PostAlertsComposer : IComposer
 
         builder.Services.AddSingleton<RateLimiter>();
         builder.Services.AddSingleton<TokenService>();
-        builder.Services.TryAddSingleton<IAlertMailer, UmbracoAlertMailer>();
+        builder.Services.AddSingleton<UmbracoAlertMailer>();
+        builder.Services.TryAddSingleton<IAlertMailer, SmtpAlertMailer>();
         builder.Services.AddSingleton<SubscriptionService>();
 
         builder.Services.TryAddSingleton<IProtectionCheck, PublicAccessProtectionCheck>();

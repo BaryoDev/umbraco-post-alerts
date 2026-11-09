@@ -60,11 +60,13 @@ Posts under Umbraco Public Access are left out of the digest, the test digest an
 
 Table based, inline styles, 600 wide, dark text on white, no CSS in a style block, no script. Cover images use the image URL generator at `CoverWidth` by `CoverHeight` with crop, then become absolute with `SiteBaseUrl`. Everything from content is HTML encoded and only http and https links are written.
 
-`IEmailSender` takes one body and no custom headers. So by default:
+Sending: the default `IAlertMailer` is `SmtpAlertMailer`. It builds a MimeKit message (`multipart/alternative`, plain text then HTML) and sends it with MailKit using `Umbraco:CMS:Global:Smtp` (host, port, secure socket option, username, password, from). MailKit 4.18.1 comes in through Umbraco, so there is no separate version pin. A digest message gets `List-Unsubscribe` (https link, plus mailto only if `UnsubscribeMailto` is set) and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The confirmation email is plain text with neither.
 
-- The digest is HTML only. The plain-text version is built and tested for mailers that can use it.
-- `List-Unsubscribe` and `List-Unsubscribe-Post` are built and tested but not attached. The footer link is the working unsubscribe.
-- `IAlertMailer` is the seam. A site can register its own to send headers and multipart.
+- One SMTP connection serves a digest batch. A dropped connection is rebuilt for the next message. `SendDelayMilliseconds` (default 0) pauses between messages.
+- Each recipient is isolated. A failure is logged and counted, and the batch goes on.
+- `UseUmbracoEmailSender`, an empty SMTP host, or a pickup-directory delivery method route through `UmbracoAlertMailer` (`IEmailSender`). That path has no custom headers and one body, so it sends HTML only and the footer link is the only unsubscribe.
+- Header and subject values have line breaks removed before they reach the message.
+- The MIME is built in `SmtpAlertMailer.Build`, which the tests call without a server.
 
 ## Builder calls
 
@@ -85,6 +87,5 @@ These were not set by the owner.
 ## Not in 0.1.0
 
 - Per-category alerts, daily or instant email
-- Multipart mail and the List-Unsubscribe headers with the default mailer
 - Subscriber list export or import
 - Pro features by domain key

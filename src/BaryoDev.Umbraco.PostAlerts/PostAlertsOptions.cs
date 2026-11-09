@@ -36,6 +36,13 @@ public sealed class PostAlertsOptions
     /// <summary>Cover height in pixels. 0 keeps the original ratio.</summary>
     public int CoverHeight { get; set; } = 315;
 
+    /// <summary>Send through Umbraco's IEmailSender instead of MailKit. That drops the unsubscribe headers and the plain-text part.</summary>
+    public bool UseUmbracoEmailSender { get; set; }
+    /// <summary>Optional mailto: address added to List-Unsubscribe next to the https link, for example unsubscribe@example.com. Needs a mailbox that handles it.</summary>
+    public string UnsubscribeMailto { get; set; } = "";
+    /// <summary>Pause between digest messages, in milliseconds.</summary>
+    public int SendDelayMilliseconds { get; set; }
+
     // Sign-up
 
     public int ConfirmationHours { get; set; } = 72;
