@@ -1,0 +1,53 @@
+/* Theme with custom properties. Set --bdpa-* on .bdpa, or set your own site tokens (--ink, --line, --green and so on). */
+.bdpa {
+  --bdpa-ink: var(--ink, #1c2321);
+  --bdpa-soft: var(--ink-soft, #4d5552);
+  --bdpa-line: var(--line, #ece4d0);
+  --bdpa-accent: var(--green, #0b7a55);
+  --bdpa-accent-deep: var(--green-deep, #075a3e);
+  --bdpa-on-accent: #fff;
+  --bdpa-bg: var(--paper, #fff);
+  --bdpa-error: var(--orange-deep, #b23f14);
+  --bdpa-radius: var(--radius-card, 8px);
+  --bdpa-font: var(--font-sans, system-ui, sans-serif);
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin: 2rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--bdpa-line);
+  border-radius: var(--bdpa-radius);
+  background: var(--bdpa-bg);
+  color: var(--bdpa-ink);
+  font-family: var(--bdpa-font);
+  line-height: 1.5;
+}
+.bdpa *, .bdpa *::before, .bdpa *::after { box-sizing: inherit; }
+.bdpa__title { margin: 0 0 .25rem; font-size: 1.25rem; }
+.bdpa__intro { margin: 0 0 1rem; color: var(--bdpa-soft); }
+.bdpa__status { margin: 0 0 1rem; min-height: 1.5em; }
+.bdpa__status:empty { display: none; }
+.bdpa__status--error { color: var(--bdpa-error); }
+.bdpa__field { margin: 0 0 .75rem; }
+.bdpa__field label { display: block; margin-bottom: .25rem; font-weight: 600; }
+.bdpa__field input { width: 100%; padding: .5rem .625rem; border: 1px solid var(--bdpa-soft); border-radius: calc(var(--bdpa-radius) / 2); font: inherit; color: inherit; background: #fff; }
+.bdpa__field input:focus-visible, .bdpa__btn:focus-visible { outline: 3px solid var(--bdpa-accent); outline-offset: 2px; }
+.bdpa__hint { display: block; margin-top: .25rem; color: var(--bdpa-soft); font-size: .875rem; }
+.bdpa__actions { margin: 0; }
+.bdpa__btn { padding: .5rem 1rem; border: 1px solid var(--bdpa-accent); border-radius: calc(var(--bdpa-radius) / 2); background: var(--bdpa-accent); color: var(--bdpa-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+.bdpa__btn:hover:not(:disabled) { background: var(--bdpa-accent-deep); }
+.bdpa__btn:disabled { opacity: .6; cursor: default; }
+.bdpa__btn--ghost { background: transparent; color: var(--bdpa-accent-deep); }
+.bdpa__btn--ghost:hover:not(:disabled) { background: var(--bdpa-accent); color: var(--bdpa-on-accent); }
+.bdpa__push { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--bdpa-line); }
+.bdpa__push[hidden] { display: none; }
+.bdpa__push .bdpa__hint { margin: 0 0 .5rem; }
+/* The honeypot stays out of sight and out of the tab order. */
+.bdpa__trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* Confirmation and unsubscribe pages */
+.bdpa-page { margin: 0; padding: 1rem; background: var(--paper, #fbf7ee); color: var(--ink, #1c2321); font-family: var(--font-sans, system-ui, sans-serif); line-height: 1.5; }
+.bdpa-page__box { box-sizing: border-box; max-width: 32rem; margin: 3rem auto; padding: 1.5rem; border: 1px solid var(--line, #ece4d0); border-radius: var(--radius-card, 8px); background: #fff; }
+.bdpa-page__title { margin: 0 0 .75rem; font-size: 1.5rem; }
+.bdpa-page__text--error { color: var(--orange-deep, #b23f14); }
+.bdpa-page__link { color: var(--green-deep, #075a3e); }
+.bdpa-page .bdpa__btn { padding: .5rem 1rem; border: 1px solid var(--green, #0b7a55); border-radius: 4px; background: var(--green, #0b7a55); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }

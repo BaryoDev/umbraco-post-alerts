@@ -1,0 +1,38 @@
+@model BaryoDev.Umbraco.PostAlerts.PostAlertsModel
+<link rel="stylesheet" href="@Url.Content("~/App_Plugins/BaryoDev.PostAlerts/post-alerts.css")" />
+<section class="bdpa" id="post-alerts" aria-labelledby="bdpa-title"
+         data-bdpa
+         data-key-url="@Model.PushKeyUrl"
+         data-subscription-url="@Model.PushSubscriptionUrl"
+         data-sw-url="@Model.ServiceWorkerUrl">
+    <h2 class="bdpa__title" id="bdpa-title">@Model.Heading</h2>
+    <p class="bdpa__intro">@Model.Intro</p>
+
+    <p class="bdpa__status@(Model.IsError ? " bdpa__status--error" : "")" role="status" aria-live="polite" data-bdpa-status>@Model.Notice</p>
+
+    @if (Model.ShowEmail)
+    {
+        <form class="bdpa__form" method="post" action="@Url.Content("~/baryo-post-alerts/subscribe")" data-bdpa-form>
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <p class="bdpa__trap" aria-hidden="true">
+                <label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+            </p>
+            <p class="bdpa__field">
+                <label for="bdpa-email">Email address</label>
+                <input id="bdpa-email" name="email" type="email" required maxlength="200" autocomplete="email" inputmode="email" aria-describedby="bdpa-email-hint" />
+                <span class="bdpa__hint" id="bdpa-email-hint">We send a link to confirm. You can unsubscribe in one click.</span>
+            </p>
+            <p class="bdpa__actions"><button type="submit" class="bdpa__btn">Subscribe by email</button></p>
+        </form>
+    }
+
+    @if (Model.ShowPush)
+    {
+        <div class="bdpa__push" data-bdpa-push hidden>
+            <p class="bdpa__hint" id="bdpa-push-hint">Your browser asks for permission only after you press the button.</p>
+            <button type="button" class="bdpa__btn bdpa__btn--ghost" data-bdpa-push-button aria-pressed="false" aria-describedby="bdpa-push-hint">Notify me in this browser</button>
+        </div>
+    }
+</section>
+<script src="@Url.Content("~/App_Plugins/BaryoDev.PostAlerts/post-alerts.js")" defer></script>
