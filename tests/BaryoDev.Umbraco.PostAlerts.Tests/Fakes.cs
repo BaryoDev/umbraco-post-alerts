@@ -111,14 +111,14 @@ public sealed class FakePushSubscriptions : IPushSubscriptionRepository
 
     public int Count() => Rows.Count;
 
-    public PushSubscriptionRow Add(string endpoint)
+    public PushSubscriptionRow Add(string endpoint, string? p256dh = null)
     {
         var row = new PushSubscriptionRow
         {
             Id = Guid.NewGuid(),
             Endpoint = endpoint,
             EndpointHash = TokenService.Hash(endpoint),
-            P256dh = "p",
+            P256dh = p256dh ?? "p",
             Auth = "a",
             CreatedUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
         };

@@ -38,9 +38,17 @@ public sealed class PushSender(IPushSubscriptionRepository subscriptions, IPushT
             }
             catch (CryptographicException e)
             {
-                // The stored key is not a usable P-256 point, so this row can never receive a push.
-                logger.LogWarning(e, "A push subscription has an invalid key and is removed.");
-                result = PushDelivery.Gone;
+                // Signing with the site's VAPID key can throw this too. Only delete when the subscriber's own key is the bad one.
+                if (Api.PushController.IsP256Point(row.P256dh))
+                {
+                    logger.LogWarning(e, "A push send failed with a cryptographic error although the subscription key is valid. Check the VAPID keys.");
+                    result = PushDelivery.Failed;
+                }
+                else
+                {
+                    logger.LogWarning(e, "A push subscription has an invalid key and is removed.");
+                    result = PushDelivery.Gone;
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

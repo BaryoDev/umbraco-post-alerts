@@ -29,7 +29,7 @@ A send moment is `SendDay` at `SendHourLocal` in `TimeZone`. A period ends at a 
 
 - A run row is inserted before sending. The unique period end makes a second insert fail, so a restart or a second server cannot send the week again.
 - A missed week is caught up once: the next due period starts at the last run, so one email carries every post since.
-- A run where not one email was accepted (SMTP down, wrong password) is marked `Failed` and its row is deleted, so the next tick claims the same period again and nothing is lost. A run where at least one email went out stays `Sent`, because a retry would mail the recipients who already got it.
+- A run where not one email was accepted (SMTP down, wrong password) is marked `Failed` and its row is deleted, so the next tick claims the same period again and nothing is lost. After a failed run the next try waits 10 minutes, then doubles each time up to 3 hours, and resets when a run sends. The wait and `DigestService.LastFailure` live in memory, so a restart tries again at once and the dashboard does not show the failure; the log does. A run where at least one email went out stays `Sent`, because a retry would mail the recipients who already got it.
 - A period with no posts, or no confirmed subscribers, is recorded as skipped. Nothing is sent and the window moves on.
 - A local hour that does not exist (spring forward) moves forward one hour. A repeated hour takes the first.
 - The job runs on the single or scheduling publisher server only.
@@ -37,7 +37,7 @@ A send moment is `SendDay` at `SendHourLocal` in `TimeZone`. A period ends at a 
 ## Subscribe flow
 
 1. `POST /baryo-post-alerts/subscribe` (antiforgery, honeypot `website`, per-client rate limit). JSON or redirect reply, same text either way.
-2. New address: pending row, random 32 byte token, only its SHA-256 stored, confirmation email. The email goes through a background queue, so the reply takes the same time for a new, a pending and a confirmed address.
+2. New address: pending row, random 32 byte token, only its SHA-256 stored, confirmation email. The email goes through an in-memory background queue, so a restart drops mails not yet sent (the visitor can ask again after `ResendCooldownMinutes`), and so the reply takes the same time for a new, a pending and a confirmed address.
 3. Pending address asking again: new token, new email, at most once per `ResendCooldownMinutes`.
 4. Confirmed address asking again: nothing happens, same reply.
 5. `GET /baryo-post-alerts/confirm/{token}` confirms and clears the hash.

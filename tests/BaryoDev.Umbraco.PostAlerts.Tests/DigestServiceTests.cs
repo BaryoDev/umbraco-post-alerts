@@ -255,6 +255,35 @@ public class DigestServiceTests
     }
 
     [Fact]
+    public async Task Repeated_total_failures_back_off_instead_of_retrying_every_tick()
+    {
+        var rig = new Rig();
+        rig.Source.Posts.Add(Posts.Make("New one", Posts.Utc(2026, 11, 5)));
+        rig.Subs.AddConfirmed("a@example.com");
+        rig.Mailer.Failing.Add("a@example.com");
+
+        Assert.Equal(DigestOutcomeKind.Failed, (await rig.Service.RunIfDueAsync()).Kind);
+        Assert.Equal(1, rig.Service.LastFailure!.Consecutive);
+
+        // Ten minutes on, the first backoff is over. The second failure doubles the wait.
+        rig.Time.Advance(TimeSpan.FromMinutes(10));
+        Assert.Equal(DigestOutcomeKind.Failed, (await rig.Service.RunIfDueAsync()).Kind);
+        Assert.Equal(2, rig.Service.LastFailure!.Consecutive);
+
+        rig.Time.Advance(TimeSpan.FromMinutes(10));
+        Assert.Equal(DigestOutcomeKind.BackingOff, (await rig.Service.RunIfDueAsync()).Kind);
+        int attempts = rig.Mailer.Sent.Count;
+
+        rig.Mailer.Failing.Clear();
+        rig.Time.Advance(TimeSpan.FromMinutes(10));
+        DigestOutcome outcome = await rig.Service.RunIfDueAsync();
+
+        Assert.Equal(DigestOutcomeKind.Sent, outcome.Kind);
+        Assert.Equal(0, attempts);
+        Assert.Null(rig.Service.LastFailure);
+    }
+
+    [Fact]
     public async Task Nothing_runs_when_email_is_not_configured()
     {
         var rig = new Rig();

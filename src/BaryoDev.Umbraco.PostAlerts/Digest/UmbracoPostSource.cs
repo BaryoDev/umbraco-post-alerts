@@ -79,7 +79,15 @@ internal sealed class UmbracoPostSource(
         // One query for every post without the date property, not one load per post.
         if (needPublishDate.Count > 0)
         {
-            Dictionary<Guid, IContent> loaded = contentService.GetByIds(needPublishDate.Select(c => c.Key)).ToDictionary(c => c.Key);
+            // In batches under 2000 keys, so the query stays inside the database parameter limit.
+            var loaded = new Dictionary<Guid, IContent>();
+            foreach (Guid[] batch in needPublishDate.Select(c => c.Key).Chunk(1000))
+            {
+                foreach (IContent content in contentService.GetByIds(batch))
+                {
+                    loaded[content.Key] = content;
+                }
+            }
             foreach (IPublishedContent c in needPublishDate)
             {
                 dates[c.Key] = PublishDate(loaded.GetValueOrDefault(c.Key)?.PublishDate) ?? c.CreateDate.ToUniversalTime();

@@ -100,6 +100,31 @@ public static class PostAlertsOptionsCheck
         return problems;
     }
 
+    /// <summary>Signs with the private key and verifies with the public one, so a bad or mismatched pair is caught at start, not on the first publish.</summary>
+    internal static bool VapidPairWorks(string publicKey, string privateKey)
+    {
+        try
+        {
+            byte[] pub = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlDecode(publicKey);
+            byte[] priv = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlDecode(privateKey);
+            var q = new System.Security.Cryptography.ECPoint { X = pub[1..33], Y = pub[33..] };
+            using var signer = System.Security.Cryptography.ECDsa.Create(new System.Security.Cryptography.ECParameters
+            {
+                Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256, Q = q, D = priv,
+            });
+            using var verifier = System.Security.Cryptography.ECDsa.Create(new System.Security.Cryptography.ECParameters
+            {
+                Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256, Q = q,
+            });
+            byte[] data = [1, 2, 3];
+            return verifier.VerifyData(data, signer.SignData(data, System.Security.Cryptography.HashAlgorithmName.SHA256), System.Security.Cryptography.HashAlgorithmName.SHA256);
+        }
+        catch (Exception e) when (e is System.Security.Cryptography.CryptographicException or FormatException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
     private static List<string> CheckPush(PostAlertsOptions o)
     {
         var problems = new List<string>();
@@ -116,6 +141,10 @@ public static class PostAlertsOptionsCheck
         if (!IsKey(o.VapidPrivateKey, 32, null))
         {
             problems.Add("VapidPrivateKey must be an unpadded base64url P-256 private key (32 bytes).");
+        }
+        else if (IsKey(o.VapidPublicKey, 65, 0x04) && IsKey(o.VapidPrivateKey, 32, null) && !VapidPairWorks(o.VapidPublicKey.Trim(), o.VapidPrivateKey.Trim()))
+        {
+            problems.Add("VapidPublicKey and VapidPrivateKey are not a working P-256 pair. Push is off until they are fixed.");
         }
         string subject = o.VapidSubject?.Trim() ?? "";
         bool mail = subject.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) && subject.Length > 7;

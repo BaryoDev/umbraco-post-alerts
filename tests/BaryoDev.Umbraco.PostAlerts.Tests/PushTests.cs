@@ -111,6 +111,24 @@ public class PushTests
     }
 
     [Fact]
+    public async Task A_cryptographic_error_with_a_valid_subscriber_key_deletes_nothing()
+    {
+        // A bad VAPID key makes every send throw while signing. No subscriber may be lost because of it.
+        var repo = new FakePushSubscriptions();
+        string good = VapidKeys.Generate().PublicKey;
+        repo.Add("https://fcm.googleapis.com/a", good);
+        repo.Add("https://fcm.googleapis.com/b", good);
+        var transport = new FakeTransport();
+        transport.Answers["https://fcm.googleapis.com/a"] = (PushDelivery)98;
+        transport.Answers["https://fcm.googleapis.com/b"] = (PushDelivery)98;
+
+        PushReport report = await new PushSender(repo, transport, NullLogger<PushSender>.Instance).SendToAllAsync("{}");
+
+        Assert.Equal(new PushReport(0, 0, 2), report);
+        Assert.Equal(2, repo.Rows.Count);
+    }
+
+    [Fact]
     public async Task Sending_to_nobody_is_a_no_op()
     {
         var sender = new PushSender(new FakePushSubscriptions(), new FakeTransport(), NullLogger<PushSender>.Instance);

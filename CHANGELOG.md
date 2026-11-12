@@ -6,6 +6,8 @@
 - Subscribe queues the confirmation email, so a new, pending and confirmed address get the same reply in the same time.
 - Push subscribe checks that the key is a point on the P-256 curve. A subscription whose key throws a cryptographic error is deleted on the next send. Existing databases get a `Status` column on the pushed-post table.
 - A push is marked queued at publish and sent after delivery. Queued pushes are queued again at start.
+- A digest retry after total failure backs off from 10 minutes up to 3 hours.
+- A subscription key error only deletes a push subscription when the subscriber's own key is invalid, and a VAPID key pair that does not match turns push off at start.
 - The digest asks for the posts of the period, and loads the publish date of posts without the date property in one query.
 - The test digest error no longer shows the mail server message, and `TextCleaner` has a match timeout.
 - Removed the stale icon TODO from the README.

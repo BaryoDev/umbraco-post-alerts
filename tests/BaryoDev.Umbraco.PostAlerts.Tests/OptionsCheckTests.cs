@@ -177,6 +177,19 @@ public class OptionsCheckTests
     }
 
     [Fact]
+    public void A_vapid_pair_that_does_not_match_turns_push_off()
+    {
+        PostAlertsOptions o = TestOptions.WithPush();
+        o.VapidPrivateKey = VapidKeys.Generate().PrivateKey;
+
+        PostAlertsOptionsCheck.Result result = PostAlertsOptionsCheck.Check(o);
+
+        Assert.False(result.PushReady);
+        Assert.Contains(result.Push, p => p.Contains("working P-256 pair"));
+        Assert.True(PostAlertsOptionsCheck.Check(TestOptions.WithPush()).PushReady);
+    }
+
+    [Fact]
     public void The_library_signs_a_vapid_header_with_the_generated_keys()
     {
         var (pub, priv) = VapidKeys.Generate();
