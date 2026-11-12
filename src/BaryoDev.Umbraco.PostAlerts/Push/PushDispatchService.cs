@@ -1,3 +1,4 @@
+using BaryoDev.Umbraco.PostAlerts.Data;
 using BaryoDev.Umbraco.PostAlerts.Digest;
 using BaryoDev.Umbraco.PostAlerts.Services;
 using Microsoft.Extensions.Hosting;
@@ -14,6 +15,7 @@ public sealed class PushDispatchService(
     PushQueue queue,
     IPostSource source,
     PushSender sender,
+    IPushedPostRepository pushed,
     IOptionsMonitor<PostAlertsOptions> options,
     ILogger<PushDispatchService> logger) : BackgroundService
 {
@@ -56,12 +58,13 @@ public sealed class PushDispatchService(
         }
         if (post?.Url is null)
         {
-            logger.LogWarning("No published address for {Key}, so no push was sent.", job.Key);
+            logger.LogWarning("No published address for {Key}, so no push was sent. It stays queued and is tried again at the next start.", job.Key);
             return null;
         }
 
         string payload = PushPayload.Build(job.Key, string.IsNullOrWhiteSpace(job.Title) ? post.Title : job.Title, job.Summary ?? post.Summary, post.Url);
         PushReport report = await sender.SendToAllAsync(payload, cancellationToken);
+        pushed.MarkSent(job.Key);
         logger.LogInformation("Push for {Key}: {Delivered} delivered, {Removed} removed, {Failed} failed.", job.Key, report.Delivered, report.Removed, report.Failed);
         return report;
     }

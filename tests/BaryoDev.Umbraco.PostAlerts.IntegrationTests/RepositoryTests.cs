@@ -181,4 +181,33 @@ public class RepositoryTests : UmbracoIntegrationTest
         Assert.That(Pushed.TryMark(key, DateTime.UtcNow), Is.False);
         Assert.That(Pushed.Count(), Is.EqualTo(1));
     }
+
+    [Test]
+    public void A_marked_post_stays_queued_until_it_is_marked_sent()
+    {
+        Guid queued = Guid.NewGuid();
+        Guid seeded = Guid.NewGuid();
+
+        Pushed.TryMark(queued, DateTime.UtcNow);
+        Pushed.TryMark(seeded, DateTime.UtcNow, PushedStatus.Sent);
+
+        Assert.That(Pushed.ListQueued(), Is.EqualTo(new[] { queued }));
+        Pushed.MarkSent(queued);
+        Assert.That(Pushed.ListQueued(), Is.Empty);
+        Assert.That(Pushed.Count(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void A_released_digest_period_can_be_claimed_again()
+    {
+        var end = new DateTime(2026, 11, 9, 1, 0, 0, DateTimeKind.Utc);
+        DigestRunRow Run() => new() { Id = Guid.NewGuid(), PeriodStartUtc = end.AddDays(-7), PeriodEndUtc = end, StartedUtc = end };
+
+        DigestRunRow first = Run();
+        Assert.That(Runs.TryClaim(first), Is.True);
+        Runs.Release(first.Id);
+
+        Assert.That(Runs.Latest(), Is.Null);
+        Assert.That(Runs.TryClaim(Run()), Is.True);
+    }
 }

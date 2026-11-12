@@ -66,6 +66,18 @@ public class TokenAndTextTests
     }
 
     [Fact]
+    public void Thousands_of_unclosed_script_tags_cannot_stall_the_cleaner()
+    {
+        string hostile = string.Concat(Enumerable.Repeat("<script ", 40000));
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        TextCleaner.Summary(hostile, 100);
+        watch.Stop();
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), "took " + watch.Elapsed);
+    }
+
+    [Fact]
     public void Cut_stops_at_a_word_and_adds_three_dots()
     {
         Assert.Equal("one two...", TextCleaner.Cut("one two three four", 12));

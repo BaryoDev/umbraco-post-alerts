@@ -1,6 +1,5 @@
 using System.Globalization;
 using BaryoDev.Umbraco.PostAlerts.Data;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.Configuration.Models;
 
@@ -22,14 +21,16 @@ public sealed record SubscribeInput(string? Email, string? Honeypot, string Clie
 public sealed class SubscriptionService(
     ISubscriberRepository subscribers,
     TokenService tokens,
-    IAlertMailer mailer,
+    IConfirmationQueue confirmations,
     RateLimiter limiter,
     IOptionsMonitor<PostAlertsOptions> options,
     IOptionsMonitor<GlobalSettings> global,
-    TimeProvider time,
-    ILogger<SubscriptionService> logger)
+    TimeProvider time)
 {
-    public async Task<SubscribeResult> SubscribeAsync(SubscribeInput input, CancellationToken cancellationToken = default)
+    public Task<SubscribeResult> SubscribeAsync(SubscribeInput input, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Subscribe(input));
+
+    public SubscribeResult Subscribe(SubscribeInput input)
     {
         PostAlertsOptions o = options.CurrentValue;
         if (!PostAlertsOptionsCheck.Check(o, global.CurrentValue.Smtp?.From).EmailReady)
@@ -94,15 +95,8 @@ public sealed class SubscriptionService(
             subscribers.Update(existing);
         }
 
-        try
-        {
-            await mailer.SendAsync(ConfirmationMail(o, email, token), "PostAlertsConfirm", cancellationToken);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            // The visitor sees the same message either way. The log says why no email came.
-            logger.LogWarning(e, "Could not send the confirmation email.");
-        }
+        // Sent in the background, so the reply does not depend on the mail server or on the address.
+        confirmations.Enqueue(ConfirmationMail(o, email, token));
         return SubscribeResult.Accepted;
     }
 

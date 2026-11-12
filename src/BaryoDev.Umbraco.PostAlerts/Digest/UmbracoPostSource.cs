@@ -51,6 +51,64 @@ internal sealed class UmbracoPostSource(
         return posts;
     }
 
+    public IReadOnlyList<PostCandidate> GetBetween(DateTime startUtc, DateTime endUtc)
+    {
+        PostAlertsOptions o = options.CurrentValue;
+        using var _ = contextFactory.EnsureUmbracoContext();
+        string? culture = Culture();
+        PostAlertsOptionsCheck.TryZone(o.TimeZone, out TimeZoneInfo zone);
+
+        List<IPublishedContent> published = Published(o, culture).ToList();
+        var dates = new Dictionary<Guid, DateTime>();
+        var needPublishDate = new List<IPublishedContent>();
+        foreach (IPublishedContent c in published)
+        {
+            DateTime? fromProperty = string.IsNullOrWhiteSpace(o.DateAlias)
+                ? null
+                : PostDates.FromPropertyValue(c.GetProperty(o.DateAlias)?.GetValue(culture), zone);
+            if (fromProperty is { } date)
+            {
+                dates[c.Key] = date;
+            }
+            else
+            {
+                needPublishDate.Add(c);
+            }
+        }
+
+        // One query for every post without the date property, not one load per post.
+        if (needPublishDate.Count > 0)
+        {
+            // In batches under 2000 keys, so the query stays inside the database parameter limit.
+            var loaded = new Dictionary<Guid, IContent>();
+            foreach (Guid[] batch in needPublishDate.Select(c => c.Key).Chunk(1000))
+            {
+                foreach (IContent content in contentService.GetByIds(batch))
+                {
+                    loaded[content.Key] = content;
+                }
+            }
+            foreach (IPublishedContent c in needPublishDate)
+            {
+                dates[c.Key] = PublishDate(loaded.GetValueOrDefault(c.Key)?.PublishDate) ?? c.CreateDate.ToUniversalTime();
+            }
+        }
+
+        var posts = new List<PostCandidate>();
+        foreach (IPublishedContent c in published.Where(c => dates[c.Key] >= startUtc && dates[c.Key] < endUtc))
+        {
+            try
+            {
+                posts.Add(Map(c, o, culture, dates[c.Key]));
+            }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Skipped post {Key}: could not read it.", c.Key);
+            }
+        }
+        return posts;
+    }
+
     public PostCandidate? Get(Guid key)
     {
         PostAlertsOptions o = options.CurrentValue;
@@ -89,7 +147,10 @@ internal sealed class UmbracoPostSource(
         return statusFilter.FilterAvailable(keys, culture).Where(c => IsPost(c, o) && !protection.IsExcluded(c.Path) && c.IsPublished(culture)).ToList();
     }
 
-    private PostCandidate Map(IPublishedContent c, PostAlertsOptions o, string? culture)
+    private static DateTime? PublishDate(DateTime? published) =>
+        published is { } p ? PostDates.ToUtc(DateTime.SpecifyKind(p, p.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : p.Kind), TimeZoneInfo.Utc) : null;
+
+    private PostCandidate Map(IPublishedContent c, PostAlertsOptions o, string? culture, DateTime? knownDate = null)
     {
         PostAlertsOptionsCheck.TryZone(o.TimeZone, out TimeZoneInfo zone);
 
@@ -97,14 +158,13 @@ internal sealed class UmbracoPostSource(
         string? relative = urls.GetUrl(c, UrlMode.Relative, culture);
         string? url = string.IsNullOrEmpty(relative) || relative == "#" ? null : AbsoluteUrl.Make(o.SiteBaseUrl, relative);
 
-        DateTime? date = string.IsNullOrWhiteSpace(o.DateAlias)
+        DateTime? date = knownDate ?? (string.IsNullOrWhiteSpace(o.DateAlias)
             ? null
-            : PostDates.FromPropertyValue(c.GetProperty(o.DateAlias)?.GetValue(culture), zone);
+            : PostDates.FromPropertyValue(c.GetProperty(o.DateAlias)?.GetValue(culture), zone));
         if (date is null)
         {
             // Umbraco keeps the publish date on the draft model, not on the published item.
-            DateTime? published = contentService.GetById(c.Key)?.PublishDate;
-            date = published is { } p ? PostDates.ToUtc(DateTime.SpecifyKind(p, p.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : p.Kind), TimeZoneInfo.Utc) : c.CreateDate.ToUniversalTime();
+            date = PublishDate(contentService.GetById(c.Key)?.PublishDate) ?? c.CreateDate.ToUniversalTime();
         }
 
         return new PostCandidate(c.Key, c.Name, summary, url, Cover(c, o, culture), date.Value);

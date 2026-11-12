@@ -17,7 +17,14 @@ public enum DigestOutcomeKind
     /// <summary>No new posts, or nobody to send to. The period is closed.</summary>
     Skipped,
     Sent,
+    /// <summary>Not one email was accepted. The claim was released and the next run retries the period.</summary>
+    Failed,
+    /// <summary>The last run sent nothing and the retry is held back. See <see cref="DigestService.LastFailure"/>.</summary>
+    BackingOff,
 }
+
+/// <summary>A run where not one email was accepted. Kept in memory for logs and diagnostics, so it is lost on restart.</summary>
+public sealed record DigestFailure(DateTime WhenUtc, DateTime PeriodEndUtc, int Posts, int Recipients, int Consecutive, DateTime NextTryUtc);
 
 public sealed record DigestOutcome(DigestOutcomeKind Kind, int Posts = 0, int Recipients = 0, int Sent = 0);
 
@@ -34,6 +41,13 @@ public sealed class DigestService(
     ILogger<DigestService> logger)
 {
     private const int PageSize = 500;
+    private static readonly TimeSpan BackoffStart = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan BackoffMax = TimeSpan.FromHours(3);
+    private int _failures;
+    private DateTime _nextTryUtc;
+
+    /// <summary>The latest run where every send failed, until a run succeeds. The database keeps no row for it, because the period is released for a retry.</summary>
+    public DigestFailure? LastFailure { get; private set; }
 
     public async Task<DigestOutcome> RunIfDueAsync(CancellationToken cancellationToken = default)
     {
@@ -52,6 +66,11 @@ public sealed class DigestService(
             return new DigestOutcome(DigestOutcomeKind.NotDue);
         }
 
+        if (now < _nextTryUtc)
+        {
+            return new DigestOutcome(DigestOutcomeKind.BackingOff);
+        }
+
         var run = new DigestRunRow
         {
             Id = Guid.NewGuid(),
@@ -65,7 +84,7 @@ public sealed class DigestService(
             return new DigestOutcome(DigestOutcomeKind.AlreadyClaimed);
         }
 
-        IReadOnlyList<PostCandidate> posts = DigestSelection.Select(source.GetAll(), period, o.MaxPostsPerDigest);
+        IReadOnlyList<PostCandidate> posts = DigestSelection.Select(source.GetBetween(period.StartUtc, period.EndUtc), period, o.MaxPostsPerDigest);
         List<SubscriberRow> recipients = posts.Count == 0 ? [] : AllConfirmed();
         if (posts.Count == 0 || recipients.Count == 0)
         {
@@ -82,8 +101,29 @@ public sealed class DigestService(
         }
         finally
         {
-            runs.Complete(run.Id, DigestRunStatus.Sent, posts.Count, recipients.Count, sent, time.GetUtcNow().UtcDateTime);
+            if (sent == 0)
+            {
+                // Nothing was accepted, so closing the week would drop its posts. Release the claim for a retry.
+                runs.Complete(run.Id, DigestRunStatus.Failed, posts.Count, recipients.Count, 0, time.GetUtcNow().UtcDateTime);
+                runs.Release(run.Id);
+            }
+            else
+            {
+                runs.Complete(run.Id, DigestRunStatus.Sent, posts.Count, recipients.Count, sent, time.GetUtcNow().UtcDateTime);
+            }
         }
+        if (sent == 0)
+        {
+            _failures++;
+            TimeSpan wait = TimeSpan.FromTicks(Math.Min(BackoffMax.Ticks, BackoffStart.Ticks << Math.Min(_failures - 1, 10)));
+            _nextTryUtc = time.GetUtcNow().UtcDateTime + wait;
+            LastFailure = new DigestFailure(time.GetUtcNow().UtcDateTime, period.EndUtc, posts.Count, recipients.Count, _failures, _nextTryUtc);
+            logger.LogWarning("Digest for {Start:u} to {End:u}: none of {Recipients} emails were accepted (failure {Count} in a row). The next try is at {Next:u}.", period.StartUtc, period.EndUtc, recipients.Count, _failures, _nextTryUtc);
+            return new DigestOutcome(DigestOutcomeKind.Failed, posts.Count, recipients.Count, 0);
+        }
+        _failures = 0;
+        _nextTryUtc = default;
+        LastFailure = null;
         logger.LogInformation("Digest for {Start:u} to {End:u}: {Sent} of {Recipients} sent, {Posts} posts.", period.StartUtc, period.EndUtc, sent, recipients.Count, posts.Count);
         return new DigestOutcome(DigestOutcomeKind.Sent, posts.Count, recipients.Count, sent);
     }

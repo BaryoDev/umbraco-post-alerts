@@ -10,6 +10,11 @@ public interface IPostSource
 {
     /// <summary>Every published post of the configured types.</summary>
     IReadOnlyList<PostCandidate> GetAll();
+    /// <summary>
+    /// The posts dated from <paramref name="startUtc"/> up to but not including <paramref name="endUtc"/>. The date is
+    /// worked out first and only these posts are mapped, so a large site does not build every post for one digest.
+    /// </summary>
+    IReadOnlyList<PostCandidate> GetBetween(DateTime startUtc, DateTime endUtc);
     PostCandidate? Get(Guid key);
     IReadOnlyList<Guid> GetAllKeys();
 }

@@ -23,8 +23,8 @@ public partial class SubscriptionServiceTests
 
         public Rig(string? smtpFrom = null)
         {
-            Service = new SubscriptionService(Subs, Tokens, Mailer, new RateLimiter(Time), TestOptions.Monitor(Options),
-                TestOptions.Global(smtpFrom), Time, NullLogger<SubscriptionService>.Instance);
+            Service = new SubscriptionService(Subs, Tokens, new ImmediateConfirmations(Mailer), new RateLimiter(Time), TestOptions.Monitor(Options),
+                TestOptions.Global(smtpFrom), Time);
         }
 
         public Task<SubscribeResult> Subscribe(string? email, string client = "1.2.3.4", string? honeypot = null) =>
@@ -259,6 +259,59 @@ public partial class SubscriptionServiceTests
 
         Assert.Equal(SubscribeResult.Accepted, result);
         Assert.Single(rig.Subs.Rows);
+    }
+
+    [Fact]
+    public async Task Known_and_unknown_addresses_get_the_same_answer_without_waiting_on_the_mail_server()
+    {
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 9, 2, 0, 0, TimeSpan.Zero));
+        var subs = new FakeSubscribers();
+        subs.AddConfirmed("known@example.com");
+        var queue = new ConfirmationQueue();
+        PostAlertsOptions options = TestOptions.Valid();
+        var service = new SubscriptionService(subs, new TokenService(new EphemeralDataProtectionProvider()), queue, new RateLimiter(time),
+            TestOptions.Monitor(options), TestOptions.Global(), time);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        SubscribeResult known = await service.SubscribeAsync(new SubscribeInput("known@example.com", null, "1.1.1.1"));
+        SubscribeResult unknown = await service.SubscribeAsync(new SubscribeInput("new@example.com", null, "1.1.1.2"));
+        SubscribeResult pending = await service.SubscribeAsync(new SubscribeInput("new@example.com", null, "1.1.1.3"));
+        watch.Stop();
+
+        Assert.Equal(SubscribeResult.Accepted, known);
+        Assert.Equal(known, unknown);
+        Assert.Equal(known, pending);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
+
+        // The only difference is behind the queue: one confirmation mail, for the new address.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        var queued = new List<OutgoingMail>();
+        await foreach (OutgoingMail mail in queue.ReadAllAsync(cts.Token))
+        {
+            queued.Add(mail);
+            break;
+        }
+        Assert.Equal("new@example.com", Assert.Single(queued).To);
+    }
+
+    [Fact]
+    public async Task The_background_sender_delivers_queued_confirmations_and_survives_a_failure()
+    {
+        var queue = new ConfirmationQueue();
+        var mailer = new RecordingMailer();
+        mailer.Failing.Add("bad@example.com");
+        var sender = new ConfirmationSender(queue, mailer, NullLogger<ConfirmationSender>.Instance);
+        queue.Enqueue(new OutgoingMail("bad@example.com", "s", "b", false));
+        queue.Enqueue(new OutgoingMail("good@example.com", "s", "b", false));
+
+        await sender.StartAsync(CancellationToken.None);
+        for (int i = 0; i < 100 && mailer.Sent.Count == 0; i++)
+        {
+            await Task.Delay(20);
+        }
+        await sender.StopAsync(CancellationToken.None);
+
+        Assert.Equal("good@example.com", Assert.Single(mailer.Sent).Mail.To);
     }
 
     [Fact]

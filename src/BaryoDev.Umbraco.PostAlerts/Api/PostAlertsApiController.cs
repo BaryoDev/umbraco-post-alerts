@@ -4,6 +4,7 @@ using BaryoDev.Umbraco.PostAlerts.Digest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Api.Management.Controllers;
 using Umbraco.Cms.Api.Management.Routing;
@@ -41,7 +42,8 @@ public sealed class PostAlertsApiController(
     DigestService digest,
     IBackOfficeSecurityAccessor security,
     IOptionsMonitor<PostAlertsOptions> options,
-    IOptionsMonitor<GlobalSettings> global) : ManagementApiControllerBase
+    IOptionsMonitor<GlobalSettings> global,
+    ILogger<PostAlertsApiController> logger) : ManagementApiControllerBase
 {
     [HttpGet("summary")]
     [ProducesResponseType<AlertsSummary>(StatusCodes.Status200OK)]
@@ -93,7 +95,8 @@ public sealed class PostAlertsApiController(
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return BadRequest(new { error = "The mail server refused the message: " + e.Message });
+            logger.LogWarning(e, "The test digest could not be sent.");
+            return BadRequest(new { error = "The test email could not be sent. The reason is in the server log." });
         }
     }
 }

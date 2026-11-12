@@ -95,6 +95,40 @@ public class PushTests
     }
 
     [Fact]
+    public async Task A_subscription_whose_key_throws_a_cryptographic_error_is_removed()
+    {
+        var repo = new FakePushSubscriptions();
+        repo.Add("https://fcm.googleapis.com/ok");
+        repo.Add("https://fcm.googleapis.com/badkey");
+        var transport = new FakeTransport();
+        transport.Answers["https://fcm.googleapis.com/badkey"] = (PushDelivery)98;
+        var sender = new PushSender(repo, transport, NullLogger<PushSender>.Instance);
+
+        PushReport report = await sender.SendToAllAsync("{}");
+
+        Assert.Equal(new PushReport(1, 1, 0), report);
+        Assert.Equal("https://fcm.googleapis.com/ok", Assert.Single(repo.Rows).Endpoint);
+    }
+
+    [Fact]
+    public async Task A_cryptographic_error_with_a_valid_subscriber_key_deletes_nothing()
+    {
+        // A bad VAPID key makes every send throw while signing. No subscriber may be lost because of it.
+        var repo = new FakePushSubscriptions();
+        string good = VapidKeys.Generate().PublicKey;
+        repo.Add("https://fcm.googleapis.com/a", good);
+        repo.Add("https://fcm.googleapis.com/b", good);
+        var transport = new FakeTransport();
+        transport.Answers["https://fcm.googleapis.com/a"] = (PushDelivery)98;
+        transport.Answers["https://fcm.googleapis.com/b"] = (PushDelivery)98;
+
+        PushReport report = await new PushSender(repo, transport, NullLogger<PushSender>.Instance).SendToAllAsync("{}");
+
+        Assert.Equal(new PushReport(0, 0, 2), report);
+        Assert.Equal(2, repo.Rows.Count);
+    }
+
+    [Fact]
     public async Task Sending_to_nobody_is_a_no_op()
     {
         var sender = new PushSender(new FakePushSubscriptions(), new FakeTransport(), NullLogger<PushSender>.Instance);
@@ -210,31 +244,38 @@ public class PushTests
         var posts = new FakePosts();
         PostCandidate post = Posts.Make("Hello", Posts.Utc(2026, 11, 9));
         posts.Posts.Add(post);
+        var pushed = new FakePushed();
+        pushed.TryMark(post.Key, DateTime.UtcNow);
         var repo = new FakePushSubscriptions();
         repo.Add("https://fcm.googleapis.com/a");
         var transport = new FakeTransport();
-        var service = new PushDispatchService(new PushQueue(), posts, new PushSender(repo, transport, NullLogger<PushSender>.Instance),
+        var service = new PushDispatchService(new PushQueue(), posts, new PushSender(repo, transport, NullLogger<PushSender>.Instance), pushed,
             TestOptions.Monitor(TestOptions.WithPush()), NullLogger<PushDispatchService>.Instance) { Wait = TimeSpan.Zero };
 
         PushReport? report = await service.DispatchAsync(new PushJob(post.Key, "Hello", "Short"), CancellationToken.None);
 
         Assert.Equal(new PushReport(1, 0, 0), report);
+        Assert.Empty(pushed.QueuedKeys);
         using JsonDocument doc = JsonDocument.Parse(Assert.Single(transport.Calls).Payload);
         Assert.Equal(post.Url, doc.RootElement.GetProperty("url").GetString());
         Assert.Equal("Short", doc.RootElement.GetProperty("body").GetString());
     }
 
     [Fact]
-    public async Task The_dispatcher_drops_a_post_it_cannot_find()
+    public async Task The_dispatcher_drops_a_post_it_cannot_find_and_leaves_it_queued()
     {
+        var pushed = new FakePushed();
+        Guid missing = Guid.NewGuid();
+        pushed.TryMark(missing, DateTime.UtcNow);
         var repo = new FakePushSubscriptions();
         repo.Add("https://fcm.googleapis.com/a");
         var transport = new FakeTransport();
-        var service = new PushDispatchService(new PushQueue(), new FakePosts(), new PushSender(repo, transport, NullLogger<PushSender>.Instance),
+        var service = new PushDispatchService(new PushQueue(), new FakePosts(), new PushSender(repo, transport, NullLogger<PushSender>.Instance), pushed,
             TestOptions.Monitor(TestOptions.WithPush()), NullLogger<PushDispatchService>.Instance) { Wait = TimeSpan.Zero, Attempts = 2 };
 
-        Assert.Null(await service.DispatchAsync(new PushJob(Guid.NewGuid(), "Gone", null), CancellationToken.None));
+        Assert.Null(await service.DispatchAsync(new PushJob(missing, "Gone", null), CancellationToken.None));
         Assert.Empty(transport.Calls);
+        Assert.Equal([missing], pushed.ListQueued());
     }
 
     [Fact]
@@ -244,7 +285,7 @@ public class PushTests
         posts.Posts.Add(Posts.Make("A", Posts.Utc(2026, 1, 1)));
         posts.Posts.Add(Posts.Make("B", Posts.Utc(2026, 1, 2)));
         var pushed = new FakePushed();
-        var seeder = new PushSeeder(posts, pushed, TestOptions.Monitor(TestOptions.WithPush()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance);
+        var seeder = new PushSeeder(posts, pushed, new Queue(), TestOptions.Monitor(TestOptions.WithPush()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance);
 
         seeder.Handle(new UmbracoApplicationStartedNotification(false));
         posts.Posts.Add(Posts.Make("C", Posts.Utc(2026, 1, 3)));
@@ -254,13 +295,44 @@ public class PushTests
     }
 
     [Fact]
+    public void A_first_publish_is_marked_queued_and_a_restart_queues_it_again()
+    {
+        var (handler, queue, pushed) = Handler();
+        Guid key = Guid.NewGuid();
+        handler.Consider(TestOptions.WithPush(), key, "post", "-1,1", "Title", "Summary");
+        Assert.Equal([key], pushed.ListQueued());
+
+        // The site restarts before the dispatcher sends: the queue is empty but the marker says queued.
+        var afterRestart = new Queue();
+        new PushSeeder(new FakePosts(), pushed, afterRestart, TestOptions.Monitor(TestOptions.WithPush()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance)
+            .Handle(new UmbracoApplicationStartedNotification(false));
+
+        Assert.Equal(new PushJob(key, "", null), Assert.Single(afterRestart.Jobs));
+    }
+
+    [Fact]
+    public void A_push_that_was_sent_is_not_queued_again_after_a_restart()
+    {
+        var pushed = new FakePushed();
+        Guid key = Guid.NewGuid();
+        pushed.TryMark(key, DateTime.UtcNow);
+        pushed.MarkSent(key);
+        var queue = new Queue();
+
+        new PushSeeder(new FakePosts(), pushed, queue, TestOptions.Monitor(TestOptions.WithPush()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance)
+            .Handle(new UmbracoApplicationStartedNotification(false));
+
+        Assert.Empty(queue.Jobs);
+    }
+
+    [Fact]
     public void The_seeder_does_nothing_when_push_is_off()
     {
         var posts = new FakePosts();
         posts.Posts.Add(Posts.Make("A", Posts.Utc(2026, 1, 1)));
         var pushed = new FakePushed();
 
-        new PushSeeder(posts, pushed, TestOptions.Monitor(TestOptions.Valid()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance)
+        new PushSeeder(posts, pushed, new Queue(), TestOptions.Monitor(TestOptions.Valid()), new FakeTimeProvider(), NullLogger<PushSeeder>.Instance)
             .Handle(new UmbracoApplicationStartedNotification(false));
 
         Assert.Equal(0, pushed.Count());
@@ -291,6 +363,22 @@ public class PushTests
     public void An_endpoint_over_the_length_limit_is_refused()
     {
         Assert.False(PushEndpointPolicy.IsAllowed("https://fcm.googleapis.com/" + new string('a', 1000), Hosts));
+    }
+
+    [Fact]
+    public void A_key_must_be_a_point_on_the_p256_curve()
+    {
+        var (pub, _) = VapidKeys.Generate();
+        byte[] offCurve = new byte[65];
+        offCurve[0] = 0x04;
+        System.Security.Cryptography.RandomNumberGenerator.Fill(offCurve.AsSpan(1));
+        offCurve[64] ^= 0x01;
+        string offCurveKey = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(offCurve);
+
+        Assert.True(PushController.IsP256Point(pub));
+        Assert.False(PushController.IsP256Point(offCurveKey));
+        Assert.False(PushController.IsP256Point(Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(new byte[65])));
+        Assert.False(PushController.IsP256Point("!!!"));
     }
 
     [Fact]

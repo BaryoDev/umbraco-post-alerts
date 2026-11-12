@@ -34,12 +34,18 @@ public interface IDigestRunRepository
     /// <summary>Inserts the row unless a run already exists for the same period end. True when this caller got the claim.</summary>
     bool TryClaim(DigestRunRow row);
     void Complete(Guid id, DigestRunStatus status, int postCount, int recipients, int sent, DateTime completedUtc);
+    /// <summary>Deletes the run row so its period can be claimed again.</summary>
+    void Release(Guid id);
 }
 
 public interface IPushedPostRepository
 {
     /// <summary>True when the post was not marked before and is now.</summary>
-    bool TryMark(Guid contentKey, DateTime nowUtc);
+    bool TryMark(Guid contentKey, DateTime nowUtc, PushedStatus status = PushedStatus.Queued);
+    /// <summary>Sets a marked post to sent after its push went out.</summary>
+    void MarkSent(Guid contentKey);
+    /// <summary>Posts whose push was queued but not sent, for example because the site restarted.</summary>
+    IReadOnlyList<Guid> ListQueued();
     int Count();
 }
 
@@ -203,6 +209,13 @@ public sealed class DigestRunRepository(IScopeProvider scopeProvider) : IDigestR
         scope.Complete();
     }
 
+    public void Release(Guid id)
+    {
+        using var scope = scopeProvider.CreateScope();
+        scope.Database.Execute("DELETE FROM baryoPostAlertsDigestRun WHERE Id = @0", id);
+        scope.Complete();
+    }
+
     private bool Exists(DateTime periodEndUtc)
     {
         using var scope = scopeProvider.CreateScope(autoComplete: true);
@@ -213,7 +226,7 @@ public sealed class DigestRunRepository(IScopeProvider scopeProvider) : IDigestR
 
 public sealed class PushedPostRepository(IScopeProvider scopeProvider) : IPushedPostRepository
 {
-    public bool TryMark(Guid contentKey, DateTime nowUtc)
+    public bool TryMark(Guid contentKey, DateTime nowUtc, PushedStatus status = PushedStatus.Queued)
     {
         using (var scope = scopeProvider.CreateScope(autoComplete: true))
         {
@@ -225,7 +238,7 @@ public sealed class PushedPostRepository(IScopeProvider scopeProvider) : IPushed
         try
         {
             using var scope = scopeProvider.CreateScope();
-            scope.Database.Insert(new PushedPostRow { ContentKey = contentKey, MarkedUtc = nowUtc });
+            scope.Database.Insert(new PushedPostRow { ContentKey = contentKey, MarkedUtc = nowUtc, Status = (int)status });
             scope.Complete();
             return true;
         }
@@ -233,6 +246,19 @@ public sealed class PushedPostRepository(IScopeProvider scopeProvider) : IPushed
         {
             return false;
         }
+    }
+
+    public void MarkSent(Guid contentKey)
+    {
+        using var scope = scopeProvider.CreateScope();
+        scope.Database.Execute("UPDATE baryoPostAlertsPushed SET Status = @0 WHERE ContentKey = @1", (int)PushedStatus.Sent, contentKey);
+        scope.Complete();
+    }
+
+    public IReadOnlyList<Guid> ListQueued()
+    {
+        using var scope = scopeProvider.CreateScope(autoComplete: true);
+        return scope.Database.Fetch<Guid>("SELECT ContentKey FROM baryoPostAlertsPushed WHERE Status = @0 ORDER BY MarkedUtc", (int)PushedStatus.Queued);
     }
 
     public int Count()

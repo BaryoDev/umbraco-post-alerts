@@ -27,6 +27,9 @@ public sealed class PostAlertsComposer : IComposer
         builder.Services.AddSingleton<TokenService>();
         builder.Services.AddSingleton<UmbracoAlertMailer>();
         builder.Services.TryAddSingleton<IAlertMailer, SmtpAlertMailer>();
+        builder.Services.AddSingleton<ConfirmationQueue>();
+        builder.Services.AddSingleton<IConfirmationQueue>(sp => sp.GetRequiredService<ConfirmationQueue>());
+        builder.Services.AddHostedService<ConfirmationSender>();
         builder.Services.AddSingleton<SubscriptionService>();
 
         builder.Services.TryAddSingleton<IProtectionCheck, PublicAccessProtectionCheck>();

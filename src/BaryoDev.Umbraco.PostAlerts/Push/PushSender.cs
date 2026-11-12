@@ -1,11 +1,12 @@
 using BaryoDev.Umbraco.PostAlerts.Data;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 
 namespace BaryoDev.Umbraco.PostAlerts.Push;
 
 public sealed record PushReport(int Delivered, int Removed, int Failed);
 
-/// <summary>Sends one payload to every stored subscription and deletes the ones the push service says are gone.</summary>
+/// <summary>Sends one payload to every stored subscription and deletes the ones the push service says are gone, or whose key is invalid.</summary>
 public sealed class PushSender(IPushSubscriptionRepository subscriptions, IPushTransport transport, ILogger<PushSender> logger)
 {
     private const int PageSize = 200;
@@ -34,6 +35,20 @@ public sealed class PushSender(IPushSubscriptionRepository subscriptions, IPushT
             try
             {
                 result = await transport.SendAsync(row, payload, ct);
+            }
+            catch (CryptographicException e)
+            {
+                // Signing with the site's VAPID key can throw this too. Only delete when the subscriber's own key is the bad one.
+                if (Api.PushController.IsP256Point(row.P256dh))
+                {
+                    logger.LogWarning(e, "A push send failed with a cryptographic error although the subscription key is valid. Check the VAPID keys.");
+                    result = PushDelivery.Failed;
+                }
+                else
+                {
+                    logger.LogWarning(e, "A push subscription has an invalid key and is removed.");
+                    result = PushDelivery.Gone;
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

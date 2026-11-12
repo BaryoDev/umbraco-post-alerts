@@ -149,10 +149,6 @@ Content section, "Post alerts" dashboard. Confirmed subscribers, push subscripti
 
 Everything here is free. Paid features, if any come later, will be separate packages unlocked by a domain key. Nothing released free will move behind it.
 
-## TODO
-
-The `icon.png` is a placeholder copied from another BaryoDev package. Replace it before publishing.
-
 ## License
 
 MIT

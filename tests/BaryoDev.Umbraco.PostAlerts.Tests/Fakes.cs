@@ -111,14 +111,14 @@ public sealed class FakePushSubscriptions : IPushSubscriptionRepository
 
     public int Count() => Rows.Count;
 
-    public PushSubscriptionRow Add(string endpoint)
+    public PushSubscriptionRow Add(string endpoint, string? p256dh = null)
     {
         var row = new PushSubscriptionRow
         {
             Id = Guid.NewGuid(),
             Endpoint = endpoint,
             EndpointHash = TokenService.Hash(endpoint),
-            P256dh = "p",
+            P256dh = p256dh ?? "p",
             Auth = "a",
             CreatedUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc),
         };
@@ -143,6 +143,8 @@ public sealed class FakeRuns : IDigestRunRepository
         return true;
     }
 
+    public void Release(Guid id) => Rows.RemoveAll(r => r.Id == id);
+
     public void Complete(Guid id, DigestRunStatus status, int postCount, int recipients, int sent, DateTime completedUtc)
     {
         DigestRunRow row = Rows.Single(r => r.Id == id);
@@ -158,7 +160,24 @@ public sealed class FakePushed : IPushedPostRepository
 {
     public HashSet<Guid> Keys { get; } = [];
 
-    public bool TryMark(Guid contentKey, DateTime nowUtc) => Keys.Add(contentKey);
+    public HashSet<Guid> QueuedKeys { get; } = [];
+
+    public bool TryMark(Guid contentKey, DateTime nowUtc, PushedStatus status = PushedStatus.Queued)
+    {
+        if (!Keys.Add(contentKey))
+        {
+            return false;
+        }
+        if (status == PushedStatus.Queued)
+        {
+            QueuedKeys.Add(contentKey);
+        }
+        return true;
+    }
+
+    public void MarkSent(Guid contentKey) => QueuedKeys.Remove(contentKey);
+
+    public IReadOnlyList<Guid> ListQueued() => QueuedKeys.ToList();
 
     public int Count() => Keys.Count;
 }
@@ -181,11 +200,35 @@ public sealed class RecordingMailer : IAlertMailer
     }
 }
 
+/// <summary>Sends a queued confirmation at once, so a test can read the mailer right after subscribing. A failure is swallowed like the background sender does.</summary>
+public sealed class ImmediateConfirmations(IAlertMailer mailer) : IConfirmationQueue
+{
+    public void Enqueue(OutgoingMail mail)
+    {
+        try
+        {
+            mailer.SendAsync(mail, "PostAlertsConfirm").GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+        }
+    }
+}
+
 public sealed class FakePosts : IPostSource
 {
     public List<PostCandidate> Posts { get; } = [];
 
     public IReadOnlyList<PostCandidate> GetAll() => Posts;
+
+    /// <summary>The periods asked for, so a test can see the digest does not ask for every post.</summary>
+    public List<(DateTime Start, DateTime End)> Asked { get; } = [];
+
+    public IReadOnlyList<PostCandidate> GetBetween(DateTime startUtc, DateTime endUtc)
+    {
+        Asked.Add((startUtc, endUtc));
+        return Posts.Where(p => p.DateUtc >= startUtc && p.DateUtc < endUtc).ToList();
+    }
 
     public PostCandidate? Get(Guid key) => Posts.FirstOrDefault(p => p.Key == key);
 
@@ -209,6 +252,10 @@ public sealed class FakeTransport : IPushTransport
             if (result == (PushDelivery)99)
             {
                 throw new InvalidOperationException("boom");
+            }
+            if (result == (PushDelivery)98)
+            {
+                throw new System.Security.Cryptography.CryptographicException("bad key");
             }
             return Task.FromResult(result);
         }

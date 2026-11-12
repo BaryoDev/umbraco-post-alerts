@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using BaryoDev.Umbraco.PostAlerts.Data;
 using BaryoDev.Umbraco.PostAlerts.Push;
@@ -63,7 +64,7 @@ public sealed class PushController(
 
         string? p256dh = Normalize(request.P256dh ?? request.Keys?.P256dh, 65, 0x04);
         string? auth = Normalize(request.Auth ?? request.Keys?.Auth, 16, null);
-        if (p256dh is null || auth is null || !PushEndpointPolicy.IsAllowed(request.Endpoint, o.PushEndpointHosts))
+        if (p256dh is null || auth is null || !IsP256Point(p256dh) || !PushEndpointPolicy.IsAllowed(request.Endpoint, o.PushEndpointHosts))
         {
             return BadRequest(new { error = "The subscription is not valid." });
         }
@@ -118,6 +119,27 @@ public sealed class PushController(
         Response.Headers["Service-Worker-Allowed"] = "/";
         Response.Headers.CacheControl = "no-cache";
         return Content(script, "text/javascript");
+    }
+
+    /// <summary>True when the base64url key is an uncompressed point that lies on the P-256 curve. A made-up key can never be used to send.</summary>
+    internal static bool IsP256Point(string base64Url)
+    {
+        try
+        {
+            byte[] key = WebEncoders.Base64UrlDecode(base64Url);
+            if (key.Length != 65 || key[0] != 0x04)
+            {
+                return false;
+            }
+            var point = new ECPoint { X = key[1..33], Y = key[33..] };
+            using var ecdh = ECDiffieHellman.Create(new ECParameters { Curve = ECCurve.NamedCurves.nistP256, Q = point });
+            ecdh.ExportParameters(false);
+            return true;
+        }
+        catch (Exception e) when (e is CryptographicException or FormatException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Strips padding and checks the decoded length. Returns the unpadded base64url form, or null.</summary>

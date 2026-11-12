@@ -19,7 +19,7 @@ New-post alerts for Umbraco 17. Two channels: a weekly email digest and browser 
 | `baryoPostAlertsSubscriber` | Id, Email (unique, lower case), Status (0 pending, 1 confirmed), TokenHash, CreatedUtc, ConfirmedUtc |
 | `baryoPostAlertsPush` | Id, EndpointHash (unique), Endpoint, P256dh, Auth, CreatedUtc |
 | `baryoPostAlertsDigestRun` | Id, PeriodStartUtc, PeriodEndUtc (unique), Status, PostCount, Recipients, Sent, StartedUtc, CompletedUtc |
-| `baryoPostAlertsPushed` | ContentKey, MarkedUtc |
+| `baryoPostAlertsPushed` | ContentKey, MarkedUtc, Status (0 queued, 1 sent) |
 
 No IP address and no user agent is stored. Unsubscribing deletes the subscriber row. There is no soft delete, so there is nothing to anonymise. Pending rows nobody confirmed are deleted after `ConfirmationHours`.
 
@@ -29,6 +29,7 @@ A send moment is `SendDay` at `SendHourLocal` in `TimeZone`. A period ends at a 
 
 - A run row is inserted before sending. The unique period end makes a second insert fail, so a restart or a second server cannot send the week again.
 - A missed week is caught up once: the next due period starts at the last run, so one email carries every post since.
+- A run where not one email was accepted (SMTP down, wrong password) is marked `Failed` and its row is deleted, so the next tick claims the same period again and nothing is lost. After a failed run the next try waits 10 minutes, then doubles each time up to 3 hours, and resets when a run sends. The wait and `DigestService.LastFailure` live in memory, so a restart tries again at once and the dashboard does not show the failure; the log does. A run where at least one email went out stays `Sent`, because a retry would mail the recipients who already got it.
 - A period with no posts, or no confirmed subscribers, is recorded as skipped. Nothing is sent and the window moves on.
 - A local hour that does not exist (spring forward) moves forward one hour. A repeated hour takes the first.
 - The job runs on the single or scheduling publisher server only.
@@ -36,7 +37,7 @@ A send moment is `SendDay` at `SendHourLocal` in `TimeZone`. A period ends at a 
 ## Subscribe flow
 
 1. `POST /baryo-post-alerts/subscribe` (antiforgery, honeypot `website`, per-client rate limit). JSON or redirect reply, same text either way.
-2. New address: pending row, random 32 byte token, only its SHA-256 stored, confirmation email.
+2. New address: pending row, random 32 byte token, only its SHA-256 stored, confirmation email. The email goes through an in-memory background queue, so a restart drops mails not yet sent (the visitor can ask again after `ResendCooldownMinutes`), and so the reply takes the same time for a new, a pending and a confirmed address.
 3. Pending address asking again: new token, new email, at most once per `ResendCooldownMinutes`.
 4. Confirmed address asking again: nothing happens, same reply.
 5. `GET /baryo-post-alerts/confirm/{token}` confirms and clears the hash.
@@ -46,11 +47,11 @@ A send moment is `SendDay` at `SendHourLocal` in `TimeZone`. A period ends at a 
 
 - Keys, subject and the allowed push hosts come from configuration.
 - Library: Lib.Net.Http.WebPush 3.3.1 (MIT, last release 2025, targets net6.0 and up). It handles VAPID and aes128gcm.
-- Subscribe validates the key lengths and that the endpoint is https on an allowed push service host. The server posts to stored endpoints, so this is the guard against using it to reach internal addresses.
-- First publish: `ContentPublishedNotification` handler marks the content key in `baryoPostAlertsPushed`. A key already marked is ignored, so re-publishing or unpublish and publish again sends nothing. The marker joins the publish transaction.
+- Subscribe validates the key lengths, that the public key is a point on the P-256 curve, and that the endpoint is https on an allowed push service host. The server posts to stored endpoints, so this is the guard against using it to reach internal addresses.
+- First publish: `ContentPublishedNotification` handler marks the content key in `baryoPostAlertsPushed`. A key already marked is ignored, so re-publishing or unpublish and publish again sends nothing. The marker joins the publish transaction. It starts as queued and becomes sent once the push went out. At start, every row still queued is queued again, so a restart between publish and send does not lose the push. With several servers a restart can send a push twice.
 - Sending runs on a background queue, so publishing never waits on push services. The address of the post is looked up after a short wait because the published cache refreshes just after the notification.
 - At the first start with push on, every post already published is marked, so installing the package and re-publishing an old post sends nothing.
-- 404 and 410 delete the subscription. Other errors keep it.
+- 404 and 410 delete the subscription, and so does a send that fails with a cryptographic error (an unusable key). Other errors keep it.
 
 ## Protected content
 
@@ -75,14 +76,13 @@ These were not set by the owner.
 - No `Directory.Packages.props`. The sibling packages do not use central package management, so this follows them.
 - Unsubscribe token uses Data Protection instead of a stored hash, because the database cannot give back a raw token for the email. Sites on several servers must share the keys.
 - Confirmation opens on GET as asked. A mail scanner that follows links can confirm an address. The cost is one unwanted but still double-checked subscription, and the unsubscribe link is in every email.
-- Run claim is at most once. A crash after the claim and before the sends finish leaves the row `Started` and that week is not retried. A duplicate email was judged worse than a missed one.
+- Run claim is at most once. A crash after the claim and before the sends finish leaves the row `Started` and that week is not retried. A duplicate email was judged worse than a missed one. The exception is a run where every send failed, see the schedule section. Resuming a partly sent run is not built.
 - Dates: the `DateAlias` value with no time zone is read in `TimeZone`. A publish date with no kind is read as UTC. Check this on your site.
 - Multi-language sites use the default language only.
 - Cover images are not converted to JPEG. Some Outlook versions cannot show WebP, so use JPEG or PNG covers if your readers use them.
 - The standalone service worker at `/baryo-post-alerts/sw.js` is served with `Service-Worker-Allowed: /` so it can cover the whole site when the site has no worker.
 - Pending subscribers and the digest job run only when the options check passes. A wrong setting disables the channel and shows in the dashboard instead of stopping startup.
 - Test digest posts: the last period, or the newest three if that period had none.
-- The icon is a placeholder.
 
 ## Not in 0.1.0
 
