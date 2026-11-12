@@ -17,4 +17,17 @@ public sealed class PushedPostRow
 
     [Column("MarkedUtc")]
     public DateTime MarkedUtc { get; set; }
+
+    /// <summary>See <see cref="PushedStatus"/>. Rows from before this column existed count as sent.</summary>
+    [Column("Status")]
+    [Constraint(Default = (int)PushedStatus.Sent)]
+    public int Status { get; set; } = (int)PushedStatus.Sent;
+}
+
+public enum PushedStatus
+{
+    /// <summary>The first publish was seen and a push is waiting. A restart queues it again.</summary>
+    Queued = 0,
+    /// <summary>The push went out, or the post was already published when the package was installed.</summary>
+    Sent = 1,
 }

@@ -1,11 +1,12 @@
 using BaryoDev.Umbraco.PostAlerts.Data;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 
 namespace BaryoDev.Umbraco.PostAlerts.Push;
 
 public sealed record PushReport(int Delivered, int Removed, int Failed);
 
-/// <summary>Sends one payload to every stored subscription and deletes the ones the push service says are gone.</summary>
+/// <summary>Sends one payload to every stored subscription and deletes the ones the push service says are gone, or whose key is invalid.</summary>
 public sealed class PushSender(IPushSubscriptionRepository subscriptions, IPushTransport transport, ILogger<PushSender> logger)
 {
     private const int PageSize = 200;
@@ -34,6 +35,12 @@ public sealed class PushSender(IPushSubscriptionRepository subscriptions, IPushT
             try
             {
                 result = await transport.SendAsync(row, payload, ct);
+            }
+            catch (CryptographicException e)
+            {
+                // The stored key is not a usable P-256 point, so this row can never receive a push.
+                logger.LogWarning(e, "A push subscription has an invalid key and is removed.");
+                result = PushDelivery.Gone;
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

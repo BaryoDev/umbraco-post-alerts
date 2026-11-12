@@ -10,6 +10,8 @@ public enum DigestRunStatus
     Sent = 1,
     /// <summary>The period had no new posts or no confirmed subscribers.</summary>
     Skipped = 2,
+    /// <summary>Every send failed (SMTP down, wrong password). The claim is released so the next tick retries the same period.</summary>
+    Failed = 3,
 }
 
 /// <summary>One row per digest period. The unique period end is what stops a second send for the same week.</summary>

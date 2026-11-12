@@ -128,6 +128,8 @@ public class DigestServiceTests
 
         public void Complete(Guid id, DigestRunStatus status, int postCount, int recipients, int sent, DateTime completedUtc) =>
             inner.Complete(id, status, postCount, recipients, sent, completedUtc);
+
+        public void Release(Guid id) => inner.Release(id);
     }
 
     [Fact]
@@ -210,6 +212,46 @@ public class DigestServiceTests
         Assert.Equal(2, outcome.Sent);
         Assert.Equal(2, rig.Runs.Rows.Single().Sent);
         Assert.Equal((int)DigestRunStatus.Sent, rig.Runs.Rows.Single().Status);
+    }
+
+    [Fact]
+    public async Task A_run_where_every_send_fails_is_released_and_retried_on_the_next_tick()
+    {
+        var rig = new Rig();
+        rig.Source.Posts.Add(Posts.Make("New one", Posts.Utc(2026, 11, 5)));
+        rig.Subs.AddConfirmed("a@example.com");
+        rig.Subs.AddConfirmed("b@example.com");
+        rig.Mailer.Failing.Add("a@example.com");
+        rig.Mailer.Failing.Add("b@example.com");
+
+        DigestOutcome first = await rig.Service.RunIfDueAsync();
+
+        Assert.Equal(new DigestOutcome(DigestOutcomeKind.Failed, 1, 2, 0), first);
+        Assert.Empty(rig.Runs.Rows);
+
+        rig.Mailer.Failing.Clear();
+        rig.Time.Advance(TimeSpan.FromMinutes(10));
+        DigestOutcome retry = await rig.Service.RunIfDueAsync();
+
+        Assert.Equal(new DigestOutcome(DigestOutcomeKind.Sent, 1, 2, 2), retry);
+        Assert.Equal(["a@example.com", "b@example.com"], rig.Mailer.Sent.Select(s => s.Mail.To));
+        Assert.Equal((int)DigestRunStatus.Sent, Assert.Single(rig.Runs.Rows).Status);
+    }
+
+    [Fact]
+    public async Task The_digest_asks_the_source_for_the_period_only()
+    {
+        var rig = new Rig();
+        rig.Source.Posts.Add(Posts.Make("New one", Posts.Utc(2026, 11, 5)));
+        rig.Source.Posts.Add(Posts.Make("Old one", Posts.Utc(2026, 5, 5)));
+        rig.Subs.AddConfirmed("a@example.com");
+
+        DigestOutcome outcome = await rig.Service.RunIfDueAsync();
+
+        Assert.Equal(1, outcome.Posts);
+        (DateTime start, DateTime end) = Assert.Single(rig.Source.Asked);
+        Assert.Equal(Posts.Utc(2026, 11, 9, 1), end);
+        Assert.True(start > Posts.Utc(2026, 10, 1));
     }
 
     [Fact]

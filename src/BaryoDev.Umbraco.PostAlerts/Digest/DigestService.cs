@@ -17,6 +17,8 @@ public enum DigestOutcomeKind
     /// <summary>No new posts, or nobody to send to. The period is closed.</summary>
     Skipped,
     Sent,
+    /// <summary>Not one email was accepted. The claim was released and the next run retries the period.</summary>
+    Failed,
 }
 
 public sealed record DigestOutcome(DigestOutcomeKind Kind, int Posts = 0, int Recipients = 0, int Sent = 0);
@@ -65,7 +67,7 @@ public sealed class DigestService(
             return new DigestOutcome(DigestOutcomeKind.AlreadyClaimed);
         }
 
-        IReadOnlyList<PostCandidate> posts = DigestSelection.Select(source.GetAll(), period, o.MaxPostsPerDigest);
+        IReadOnlyList<PostCandidate> posts = DigestSelection.Select(source.GetBetween(period.StartUtc, period.EndUtc), period, o.MaxPostsPerDigest);
         List<SubscriberRow> recipients = posts.Count == 0 ? [] : AllConfirmed();
         if (posts.Count == 0 || recipients.Count == 0)
         {
@@ -82,7 +84,21 @@ public sealed class DigestService(
         }
         finally
         {
-            runs.Complete(run.Id, DigestRunStatus.Sent, posts.Count, recipients.Count, sent, time.GetUtcNow().UtcDateTime);
+            if (sent == 0)
+            {
+                // Nothing was accepted, so closing the week would drop its posts. Release the claim for a retry.
+                runs.Complete(run.Id, DigestRunStatus.Failed, posts.Count, recipients.Count, 0, time.GetUtcNow().UtcDateTime);
+                runs.Release(run.Id);
+            }
+            else
+            {
+                runs.Complete(run.Id, DigestRunStatus.Sent, posts.Count, recipients.Count, sent, time.GetUtcNow().UtcDateTime);
+            }
+        }
+        if (sent == 0)
+        {
+            logger.LogWarning("Digest for {Start:u} to {End:u}: none of {Recipients} emails were accepted. The next run retries this period.", period.StartUtc, period.EndUtc, recipients.Count);
+            return new DigestOutcome(DigestOutcomeKind.Failed, posts.Count, recipients.Count, 0);
         }
         logger.LogInformation("Digest for {Start:u} to {End:u}: {Sent} of {Recipients} sent, {Posts} posts.", period.StartUtc, period.EndUtc, sent, recipients.Count, posts.Count);
         return new DigestOutcome(DigestOutcomeKind.Sent, posts.Count, recipients.Count, sent);
